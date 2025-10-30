@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -20,6 +21,7 @@ const (
 	GSrvStateIdle   = 0
 	GSrvStateSnake  = 1
 	GSrvStateNormal = 2
+	GSrvStateWin    = 3
 
 	GSrvUpdatesPerSecond = 10
 	GSrvSecondsForTopLED = 2
@@ -134,6 +136,10 @@ func (gs *GlowSrv) UseState(state int) {
 				gs.ClearAll()
 			}
 
+		case GSrvStateWin:
+			// From Win state, clear everything
+			gs.leds.Fill(0)
+
 		default:
 			// Normal state. Clear on any state change.
 			gs.leds.Fill(0)
@@ -142,6 +148,13 @@ func (gs *GlowSrv) UseState(state int) {
 		// From anything to the Snake state, reset the snake.
 		if state == GSrvStateSnake {
 			gs.initSnake()
+		}
+
+		// Entering Win state: clear all and paint WIN, set 10-second delay
+		if state == GSrvStateWin {
+			gs.leds.Fill(0)
+			gs.paintWin()
+			gs.delay = 10 * GSrvUpdatesPerSecond
 		}
 	}
 
@@ -237,6 +250,41 @@ func (gs *GlowSrv) paintTopLED() {
 	}
 }
 
+const WIN = `
+X       X XXXXX X      X  X
+X       X   X   XX     X  X
+X       X   X   X X    X  X
+X       X   X   X  X   X  X
+ X     X    X   X   X  X  X
+ X  X  X    X   X    X X
+  X X X     X   X     XX  X
+   X X    XXXXX X      X  X
+`
+
+func (gs *GlowSrv) paintWin() {
+	// Paint "WIN" in blue letters centered on the display
+
+	color := uint32(ColorBlue)
+
+	lines := strings.Split(strings.TrimSpace(WIN), "\n")
+
+	startCol := 2
+
+	for row, line := range lines {
+		// fmt.Printf("WIN line %d: %s\n", row, line)
+		for colOffset, char := range line {
+			if char == 'X' {
+				col := startCol + colOffset
+				if col < gs.cols && row < gs.rows {
+					// fmt.Printf("%d ", col)
+					gs.leds.SetPixel(col, row, color)
+				}
+			}
+		}
+		// fmt.Println()
+	}
+}
+
 func (gs *GlowSrv) LEDHit() {
 	// 2. Get the node and process from the current column (before clearing)
 	if gs.topLEDCol >= 0 && gs.topLEDCol < len(gs.columns) {
@@ -283,11 +331,11 @@ func (gs *GlowSrv) UpdateTopLED() {
 		}
 	}
 
-	// If no active columns, clear and return
+	// If no active columns, go to Win state
 	if len(activeColumns) == 0 {
-		// fmt.Printf("Top LED: no active columns\n")
 		gs.topLEDCol = -1
 		gs.topLEDColor = 0
+		gs.UseState(GSrvStateWin)
 		return
 	}
 
@@ -330,6 +378,13 @@ func (gs *GlowSrv) Update() error {
 
 	case GSrvStateSnake:
 		gs.UpdateSnake()
+
+	case GSrvStateWin:
+		gs.delay--
+
+		if gs.delay <= 0 {
+			gs.UseState(GSrvStateIdle)
+		}
 
 	default:
 		gs.Decay()
@@ -374,8 +429,11 @@ func (gs *GlowSrv) handleActivityCommand(data []byte) {
 	gs.mutex.Lock()
 	defer gs.mutex.Unlock()
 
-	gs.UseState(GSrvStateNormal)
-	gs.SetColumn(msg.Node, msg.Process, color, capped_height)
+	// Don't process activity during Win state
+	if gs.state != GSrvStateWin {
+		gs.UseState(GSrvStateNormal)
+		gs.SetColumn(msg.Node, msg.Process, color, capped_height)
+	}
 }
 
 func (gs *GlowSrv) handleIdleCommand(data []byte) {
@@ -389,6 +447,11 @@ func (gs *GlowSrv) handleIdleCommand(data []byte) {
 func (gs *GlowSrv) handleButtonPress(key string) {
 	gs.mutex.Lock()
 	defer gs.mutex.Unlock()
+
+	// Ignore button presses during Win state
+	if gs.state == GSrvStateWin {
+		return
+	}
 
 	// SPACE always generates a hit (for testing)
 	if key == "SPACE" {
