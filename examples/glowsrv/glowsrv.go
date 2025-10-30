@@ -30,6 +30,34 @@ const (
 	ColorRedSat = 0.57
 )
 
+type Column struct {
+	Active     bool
+	ActiveTime time.Time
+	Color      uint32
+	Height     int
+	Node       int
+	Process    int
+}
+
+func (c *Column) Clear() {
+	c.Active = false
+	c.Color = 0
+	c.Height = 0
+}
+
+func (c *Column) Set(color uint32, height int) {
+	c.Active = true
+	c.ActiveTime = time.Now()
+	c.Color = color
+	c.Height = height
+}
+
+func (c *Column) Decay() {
+	if c.Height > 0 {
+		c.Height--
+	}
+}
+
 type GlowSrv struct {
 	state int
 	delay int
@@ -41,18 +69,13 @@ type GlowSrv struct {
 
 	leds *LEDs
 
-	mutex      sync.RWMutex
-	active     map[int]bool
-	activeTime map[int]time.Time
-	colors     map[int]uint32
-	heights    map[int]int
+	mutex   sync.RWMutex
+	columns []Column
 
 	snake Snake
 }
 
 func NewGlowSrv(rows, cols int, leds *LEDs) (*GlowSrv, error) {
-	snake := Snake{}
-
 	gs := &GlowSrv{
 		state:        GSrvStateSnake,
 		delay:        0,
@@ -60,11 +83,8 @@ func NewGlowSrv(rows, cols int, leds *LEDs) (*GlowSrv, error) {
 		rows:         rows,
 		cols:         cols,
 		leds:         leds,
-		active:       make(map[int]bool),
-		activeTime:   make(map[int]time.Time),
-		colors:       make(map[int]uint32, cols),
-		heights:      make(map[int]int, cols),
-		snake:        snake,
+		columns:      make([]Column, cols),
+		snake:        Snake{},
 	}
 
 	gs.initSnake()
@@ -75,9 +95,7 @@ func NewGlowSrv(rows, cols int, leds *LEDs) (*GlowSrv, error) {
 func (gs *GlowSrv) ClearAll() {
 	gs.leds.Fill(0)
 	for col := 0; col < gs.cols; col++ {
-		gs.active[col] = false
-		gs.colors[col] = 0
-		gs.heights[col] = 0
+		gs.columns[col].Clear()
 	}
 }
 
@@ -154,14 +172,16 @@ func (gs *GlowSrv) UpdateSnake() {
 	}
 }
 
-func (gs *GlowSrv) SetColumn(col int, color uint32, height int) {
+func (gs *GlowSrv) SetColumn(node int, process int, color uint32, height int) {
 	// gs.mutex.Lock()
 	// defer gs.mutex.Unlock()
 
-	gs.active[col] = true
-	gs.activeTime[col] = time.Now()
-	gs.colors[col] = color
-	gs.heights[col] = height
+	// Calculate column from node and process
+	col := (((node - 1) * 5) + process) + 1
+
+	gs.columns[col].Set(color, height)
+	gs.columns[col].Node = node
+	gs.columns[col].Process = process
 }
 
 func (gs *GlowSrv) Render() error {
@@ -169,11 +189,11 @@ func (gs *GlowSrv) Render() error {
 	if gs.state == GSrvStateNormal {
 		gs.leds.Fill(0)
 
-		for col, color := range gs.colors {
-			height := gs.heights[col]
+		for col, column := range gs.columns {
+			height := column.Height
 
 			for row := 0; row < height && row < gs.rows; row++ {
-				gs.leds.SetPixel(col, gs.rows-1-row, color)
+				gs.leds.SetPixel(col, gs.rows-1-row, column.Color)
 			}
 		}
 	}
@@ -182,10 +202,8 @@ func (gs *GlowSrv) Render() error {
 }
 
 func (gs *GlowSrv) Decay() {
-	for col := range gs.heights {
-		if gs.heights[col] > 0 {
-			gs.heights[col]--
-		}
+	for col := range gs.columns {
+		gs.columns[col].Decay()
 	}
 }
 
@@ -241,17 +259,16 @@ func (gs *GlowSrv) handleActivityCommand(data []byte) {
 		return
 	}
 
-	col := (((msg.Node - 1) * 5) + msg.Process) + 1
 	height := msg.Value / 10
 	capped_height := max(min(height, gs.rows-2), 1)
 
-	// fmt.Printf("n%dp%d %v/%d -> %d, %d\n", msg.Node, msg.Process, msg.OK, msg.Value, col, capped_height)
+	// fmt.Printf("n%dp%d %v/%d -> %d\n", msg.Node, msg.Process, msg.OK, msg.Value, capped_height)
 
 	gs.mutex.Lock()
 	defer gs.mutex.Unlock()
 
 	gs.UseState(GSrvStateNormal)
-	gs.SetColumn(col, color, capped_height)
+	gs.SetColumn(msg.Node, msg.Process, color, capped_height)
 }
 
 func (gs *GlowSrv) handleIdleCommand(data []byte) {
