@@ -350,6 +350,7 @@ func main() {
 	// Handle SIGINT/SIGTERM for graceful shutdown
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	done := make(chan struct{})
 
 	GSrvRows := 8
 	GSrvCols := 32
@@ -427,7 +428,7 @@ func main() {
 					fmt.Fprintf(os.Stderr, "Failed to update GlowSrv: %v\n", err)
 				}
 
-			case <-sigs:
+			case <-done:
 				return
 			}
 		}
@@ -449,7 +450,7 @@ func main() {
 				}
 				gsrv.mutex.Unlock()
 
-			case <-sigs:
+			case <-done:
 				return
 			}
 		}
@@ -472,6 +473,7 @@ func main() {
 
 		case sig := <-sigs:
 			fmt.Printf("Received signal %v, shutting down.\n", sig)
+			close(done)
 			return
 		}
 	}
