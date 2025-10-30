@@ -20,6 +20,9 @@ const (
 	GSrvStateIdle   = 0
 	GSrvStateSnake  = 1
 	GSrvStateNormal = 2
+
+	GSrvUpdatesPerSecond = 10
+	GSrvSecondsForTopLED = 2
 )
 
 // These are Faces colors, from https://sronpersonalpages.nl/~pault
@@ -488,7 +491,7 @@ func main() {
 
 	// Start update timer
 	go func() {
-		ticker := time.NewTicker(100 * time.Millisecond)
+		ticker := time.NewTicker((1000 * time.Millisecond) / GSrvUpdatesPerSecond)
 		defer ticker.Stop()
 
 		for {
@@ -510,7 +513,7 @@ func main() {
 
 	// Start top LED update timer
 	go func() {
-		ticker := time.NewTicker(2 * time.Second)
+		ticker := time.NewTicker(GSrvSecondsForTopLED * time.Second)
 		defer ticker.Stop()
 
 		for {
@@ -524,7 +527,7 @@ func main() {
 
 			case <-gsrv.topLEDUpdateCh:
 				// Reset the timer when a hit occurs
-				ticker.Reset(2 * time.Second)
+				ticker.Reset(GSrvSecondsForTopLED * time.Second)
 
 			case <-done:
 				return
