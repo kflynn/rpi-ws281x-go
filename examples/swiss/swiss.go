@@ -15,7 +15,7 @@
 package main
 
 import (
-	ws2811 "github.com/rpi-ws281x/rpi-ws281x-go"
+	ws2811 "github.com/rpi-ws281x/rpi-ws281x-go/pkg/ws2811"
 )
 
 const (

@@ -1,4 +1,4 @@
-module swiss
+module rainbow
 
 go 1.20
 
