@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	brightness = 90
+	brightness = 255
 	ledCounts  = 64
-	sleepTime  = 50
+	sleepTime  = 5
 )
 
 type wsEngine interface {
@@ -71,11 +71,18 @@ func main() {
 		ws: dev,
 	}
 	checkError(cw.setup())
-	defer dev.Fini()
+	defer func() {
+		for i := 0; i < len(cw.ws.Leds(0)); i++ {
+			cw.ws.Leds(0)[i] = uint32(0x000000)
+		}
 
-	cw.display(uint32(0x0000ff))
-	cw.display(uint32(0x00ff00))
-	cw.display(uint32(0xff0000))
-	cw.display(uint32(0x000000))
+		dev.Fini()
+	}()
 
+	for {
+		cw.display(uint32(0x0000ff))
+		cw.display(uint32(0x00ff00))
+		cw.display(uint32(0xff0000))
+		cw.display(uint32(0x000000))
+	}
 }
