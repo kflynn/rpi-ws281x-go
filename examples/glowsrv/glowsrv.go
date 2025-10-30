@@ -81,22 +81,24 @@ type GlowSrv struct {
 
 	snake Snake
 
-	topLEDCol   int
-	topLEDColor uint32
+	topLEDCol      int
+	topLEDColor    uint32
+	topLEDUpdateCh chan struct{}
 }
 
 func NewGlowSrv(rows, cols int, leds *LEDs) (*GlowSrv, error) {
 	gs := &GlowSrv{
-		state:        GSrvStateSnake,
-		delay:        0,
-		lastActivity: time.Now(),
-		rows:         rows,
-		cols:         cols,
-		leds:         leds,
-		columns:      make([]Column, cols),
-		snake:        Snake{},
-		topLEDCol:    -1,
-		topLEDColor:  0,
+		state:          GSrvStateSnake,
+		delay:          0,
+		lastActivity:   time.Now(),
+		rows:           rows,
+		cols:           cols,
+		leds:           leds,
+		columns:        make([]Column, cols),
+		snake:          Snake{},
+		topLEDCol:      -1,
+		topLEDColor:    0,
+		topLEDUpdateCh: make(chan struct{}, 1),
 	}
 
 	gs.initSnake()
@@ -241,6 +243,13 @@ func (gs *GlowSrv) LEDHit() {
 
 		// 1. Turn off the top LED
 		gs.clearTopLED()
+
+		// Immediately pick a new top LED and reset the timer
+		gs.UpdateTopLED()
+		select {
+		case gs.topLEDUpdateCh <- struct{}{}:
+		default:
+		}
 
 		// 3. Execute the kubectl command in a goroutine
 		go func(node, process int) {
@@ -512,6 +521,10 @@ func main() {
 					gsrv.UpdateTopLED()
 				}
 				gsrv.mutex.Unlock()
+
+			case <-gsrv.topLEDUpdateCh:
+				// Reset the timer when a hit occurs
+				ticker.Reset(2 * time.Second)
 
 			case <-done:
 				return
