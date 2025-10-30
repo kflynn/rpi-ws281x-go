@@ -18,13 +18,14 @@ type inputEvent struct {
 	Value int32           // event value
 }
 
-// Key codes for B, G, R, Y, W
+// Key codes for B, G, R, Y, W, SPACE
 const (
-	KEY_B = 48 // B key
-	KEY_G = 34 // G key
-	KEY_R = 19 // R key
-	KEY_Y = 21 // Y key
-	KEY_W = 17 // W key
+	KEY_B     = 48 // B key
+	KEY_G     = 34 // G key
+	KEY_R     = 19 // R key
+	KEY_Y     = 21 // Y key
+	KEY_W     = 17 // W key
+	KEY_SPACE = 57 // Space key
 
 	EV_KEY     = 1 // Key event type
 	KEY_PRESS  = 1 // Key pressed
@@ -156,6 +157,8 @@ func readKeyboard(device string, gsrv *GlowSrv, done chan struct{}) {
 					key = "Y"
 				case KEY_W:
 					key = "W"
+				case KEY_SPACE:
+					key = "SPACE"
 				default:
 					continue
 				}

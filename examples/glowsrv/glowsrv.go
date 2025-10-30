@@ -350,6 +350,14 @@ func (gs *GlowSrv) handleButtonPress(key string) {
 	gs.mutex.Lock()
 	defer gs.mutex.Unlock()
 
+	// SPACE always generates a hit (for testing)
+	if key == "SPACE" {
+		if gs.topLEDCol >= 0 {
+			fmt.Printf("✓ SPACE hit (testing)!\n")
+		}
+		return
+	}
+
 	// Check if key matches the top LED color
 	var keyMatches bool
 
