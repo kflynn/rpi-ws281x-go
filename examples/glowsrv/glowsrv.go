@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"math/rand"
 	"os"
 	"os/signal"
 	"sync"
@@ -20,6 +21,7 @@ const (
 	GSrvStateNormal = 2
 )
 
+// These are Faces colors, from https://sronpersonalpages.nl/~pault
 const (
 	ColorBlue    = 0x66CCEE
 	ColorBlueHue = 195.0 / 360.0
@@ -28,6 +30,10 @@ const (
 	ColorRed    = 0xEE6677
 	ColorRedHue = 353.0 / 360.0
 	ColorRedSat = 0.57
+
+	ColorYellow = 0xFFFF00
+	ColorGreen  = 0x00FF00
+	ColorWhite  = 0xFFFFFF
 )
 
 type Column struct {
@@ -73,6 +79,9 @@ type GlowSrv struct {
 	columns []Column
 
 	snake Snake
+
+	topLEDCol   int
+	topLEDColor uint32
 }
 
 func NewGlowSrv(rows, cols int, leds *LEDs) (*GlowSrv, error) {
@@ -85,6 +94,8 @@ func NewGlowSrv(rows, cols int, leds *LEDs) (*GlowSrv, error) {
 		leds:         leds,
 		columns:      make([]Column, cols),
 		snake:        Snake{},
+		topLEDCol:    -1,
+		topLEDColor:  0,
 	}
 
 	gs.initSnake()
@@ -188,6 +199,7 @@ func (gs *GlowSrv) Render() error {
 	// In Normal state, we'll need to re-render the whole display.
 	if gs.state == GSrvStateNormal {
 		gs.leds.Fill(0)
+		gs.paintTopLED()
 
 		for col, column := range gs.columns {
 			height := column.Height
@@ -205,6 +217,61 @@ func (gs *GlowSrv) Decay() {
 	for col := range gs.columns {
 		gs.columns[col].Decay()
 	}
+}
+
+func (gs *GlowSrv) clearTopLED() {
+	if gs.topLEDCol >= 0 {
+		gs.leds.SetPixel(gs.topLEDCol, 0, 0)
+	}
+}
+
+func (gs *GlowSrv) paintTopLED() {
+	if gs.topLEDCol >= 0 {
+		gs.leds.SetPixel(gs.topLEDCol, 0, gs.topLEDColor)
+	}
+}
+
+func (gs *GlowSrv) UpdateTopLED() {
+	// Clear previous top LED if set
+	gs.clearTopLED()
+
+	// Find all active columns
+	activeColumns := []int{}
+	for col, column := range gs.columns {
+		if column.Active && column.Height > 0 {
+			activeColumns = append(activeColumns, col)
+		}
+	}
+
+	// If no active columns, clear and return
+	if len(activeColumns) == 0 {
+		// fmt.Printf("Top LED: no active columns\n")
+		gs.topLEDCol = -1
+		gs.topLEDColor = 0
+		return
+	}
+
+	// Pick a random active column and color. Both must be different from
+	// their current values.
+	col := gs.topLEDCol
+
+	for col == gs.topLEDCol {
+		col = activeColumns[rand.Intn(len(activeColumns))]
+	}
+
+	colors := []uint32{ColorBlue, ColorYellow, ColorRed, ColorGreen, ColorWhite}
+
+	color := gs.topLEDColor
+
+	for color == gs.topLEDColor {
+		color = colors[rand.Intn(len(colors))]
+	}
+
+	// fmt.Printf("Top LED: col=%d color=0x%06X\n", col, color)
+
+	gs.topLEDCol = col
+	gs.topLEDColor = color
+	gs.paintTopLED()
 }
 
 func (gs *GlowSrv) Update() error {
@@ -359,6 +426,28 @@ func main() {
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to update GlowSrv: %v\n", err)
 				}
+
+			case <-sigs:
+				return
+			}
+		}
+	}()
+
+	fmt.Printf("update task started\n")
+
+	// Start top LED update timer
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				gsrv.mutex.Lock()
+				if gsrv.state == GSrvStateNormal {
+					gsrv.UpdateTopLED()
+				}
+				gsrv.mutex.Unlock()
 
 			case <-sigs:
 				return
