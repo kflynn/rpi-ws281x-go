@@ -346,6 +346,31 @@ func (gs *GlowSrv) handleIdleCommand(data []byte) {
 	gs.UseState(GSrvStateSnake)
 }
 
+func (gs *GlowSrv) handleButtonPress(key string) {
+	gs.mutex.Lock()
+	defer gs.mutex.Unlock()
+
+	// Check if key matches the top LED color
+	var keyMatches bool
+
+	switch gs.topLEDColor {
+	case ColorBlue:
+		keyMatches = (key == "B")
+	case ColorYellow:
+		keyMatches = (key == "Y")
+	case ColorRed:
+		keyMatches = (key == "R")
+	case ColorGreen:
+		keyMatches = (key == "G")
+	case ColorWhite:
+		keyMatches = (key == "W")
+	}
+
+	if keyMatches && gs.topLEDCol >= 0 {
+		fmt.Printf("✓ hit!\n")
+	}
+}
+
 func main() {
 	// Handle SIGINT/SIGTERM for graceful shutdown
 	sigs := make(chan os.Signal, 1)
@@ -455,6 +480,18 @@ func main() {
 			}
 		}
 	}()
+
+	// Start keyboard reader
+	// Try to auto-detect keyboard, or use command line arg, or default to event0
+	keyboardDevice := findKeyboardDevice()
+	if keyboardDevice == "" {
+		if len(os.Args) > 2 {
+			keyboardDevice = os.Args[2]
+		} else {
+			keyboardDevice = "/dev/input/event0"
+		}
+	}
+	go readKeyboard(keyboardDevice, gsrv, done)
 
 	fmt.Println("glowsrv: waiting for susurri...")
 	for {
