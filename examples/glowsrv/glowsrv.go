@@ -339,12 +339,23 @@ func (gs *GlowSrv) UpdateTopLED() {
 		return
 	}
 
+	// Build weighted list: process zero columns appear once, others appear twice
+	// This makes process zero half as likely to be picked
+	weightedColumns := []int{}
+	for _, col := range activeColumns {
+		weightedColumns = append(weightedColumns, col)
+		// Add non-process-zero columns a second time (process zero has process=0)
+		if gs.columns[col].Process != 0 {
+			weightedColumns = append(weightedColumns, col)
+		}
+	}
+
 	// Pick a random active column and color. Both must be different from
 	// their current values.
 	col := gs.topLEDCol
 
 	for col == gs.topLEDCol {
-		col = activeColumns[rand.Intn(len(activeColumns))]
+		col = weightedColumns[rand.Intn(len(weightedColumns))]
 	}
 
 	colors := []uint32{ColorBlue, ColorYellow, ColorRed, ColorGreen, ColorWhite}
