@@ -453,6 +453,8 @@ func (gs *GlowSrv) handleButtonPress(key string) {
 		return
 	}
 
+	// fmt.Printf("handleButtonPress: key=%s topLEDCol=%d topLEDColor=0x%06X\n", key, gs.topLEDCol, gs.topLEDColor)
+
 	// SPACE always generates a hit (for testing)
 	if key == "SPACE" {
 		if gs.topLEDCol >= 0 {
@@ -600,15 +602,19 @@ func main() {
 
 	// Start keyboard reader
 	// Try to auto-detect keyboard, or use command line arg, or default to event0
-	keyboardDevice := findKeyboardDevice()
-	if keyboardDevice == "" {
-		if len(os.Args) > 2 {
-			keyboardDevice = os.Args[2]
-		} else {
-			keyboardDevice = "/dev/input/event0"
-		}
+	kbdDevices := findKeyboardDevices()
+
+	if len(os.Args) > 2 {
+		kbdDevices = append(kbdDevices, os.Args[2])
 	}
-	go readKeyboard(keyboardDevice, gsrv, done)
+
+	if len(kbdDevices) == 0 {
+		kbdDevices = append(kbdDevices, "/dev/input/event0")
+	}
+
+	for _, device := range kbdDevices {
+		go readKeyboard(device, gsrv, done)
+	}
 
 	fmt.Println("glowsrv: waiting for susurri...")
 	for {

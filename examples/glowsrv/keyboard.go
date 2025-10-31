@@ -32,19 +32,22 @@ const (
 	KEY_REPEAT = 2 // Key held down (auto-repeat)
 )
 
-func findKeyboardDevice() string {
-	// Parse /proc/bus/input/devices to find keyboard
+func findKeyboardDevices() []string {
+	// Parse /proc/bus/input/devices to find all keyboards
+
+	kbdDevices := make([]string, 0, 1)
+
 	f, err := os.Open("/proc/bus/input/devices")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to open /proc/bus/input/devices: %v\n", err)
-		return ""
+		return nil
 	}
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
 	var currentName string
 	var currentHandlers string
-	var fallbackDevice string
+	// var fallbackDevice string
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -53,14 +56,6 @@ func findKeyboardDevice() string {
 			// Extract device name
 			currentName = strings.TrimPrefix(line, "N: Name=")
 			currentName = strings.Trim(currentName, "\"")
-
-			// Skip HDMI devices
-			if strings.Contains(currentName, "hdmi") {
-				fmt.Printf("skipping HDMI device: %s\n", currentName)
-				currentName = ""
-				currentHandlers = ""
-				continue
-			}
 
 			fmt.Printf("device block: %s\n", currentName)
 			currentHandlers = ""
@@ -74,25 +69,17 @@ func findKeyboardDevice() string {
 			if strings.Contains(currentHandlers, "kbd") {
 				// Extract event number from handlers
 				fields := strings.Fields(currentHandlers)
-				var eventDevice string
+
 				for _, field := range fields {
 					if strings.HasPrefix(field, "event") {
-						eventDevice = fmt.Sprintf("/dev/input/%s", field)
+						eventDevice := fmt.Sprintf("/dev/input/%s", field)
+						fmt.Printf("Attaching keyboard: %s (%s)\n", currentName, eventDevice)
+						kbdDevices = append(kbdDevices, eventDevice)
 						break
 					}
 				}
-
-				if eventDevice != "" {
-					// Prefer keyboards without joystick handlers
-					if !strings.Contains(currentHandlers, "js") {
-						fmt.Printf("Found keyboard: %s (%s)\n", currentName, eventDevice)
-						return eventDevice
-					} else if fallbackDevice == "" {
-						// Keep as fallback in case we don't find a pure keyboard
-						fallbackDevice = eventDevice
-					}
-				}
 			}
+
 			// Reset for next device
 			currentName = ""
 			currentHandlers = ""
@@ -103,11 +90,7 @@ func findKeyboardDevice() string {
 		fmt.Fprintf(os.Stderr, "Error reading /proc/bus/input/devices: %v\n", err)
 	}
 
-	// Return fallback if we only found kbd+js devices
-	if fallbackDevice != "" {
-		fmt.Printf("Found keyboard (with joystick): %s\n", fallbackDevice)
-	}
-	return fallbackDevice
+	return kbdDevices
 }
 
 func readKeyboard(device string, gsrv *GlowSrv, done chan struct{}) {
@@ -144,7 +127,7 @@ func readKeyboard(device string, gsrv *GlowSrv, done chan struct{}) {
 
 			// Only handle key press events (not release or repeat)
 			if event.Type == EV_KEY && event.Value == KEY_PRESS {
-				// fmt.Printf("Key pressed: code=%d\n", event.Code)
+				// fmt.Printf("kbd %s: code=%d\n", device, event.Code)
 				var key string
 				switch event.Code {
 				case KEY_B:
