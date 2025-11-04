@@ -417,13 +417,36 @@ func (gs *GlowSrv) UpdateTopLED() {
 		}
 	}
 
+	// fmt.Printf("Active columns: %v\n", activeColumns)
+	// fmt.Printf("Weighted columns: %v\n", weightedColumns)
+
 	// Pick a random active column and color. Both must be different from
 	// their current values.
 	col := gs.topLEDCol
 
-	for col == gs.topLEDCol {
-		col = weightedColumns[rand.Intn(len(weightedColumns))]
+	// Seems silly to have this if, right? Well, without it, this is an
+	// endless loop if there's only one active column, and without the
+	// else we'll never pick a topLEDCol if we start with only one active
+	// column. Corner cases suck.
+	//
+	// (Also: you need to key off len(activeColumns), not len(weightedColumns),
+	// because if you have a single active column that isn't process zero, it
+	// will appear twice in weightedColumns.)
+
+	// Never go through this loop more than five times.
+
+	max := 5
+
+	if len(activeColumns) > 1 {
+		for col == gs.topLEDCol && max > 0 {
+			col = weightedColumns[rand.Intn(len(weightedColumns))]
+			max--
+		}
+	} else {
+		col = weightedColumns[0]
 	}
+
+	// fmt.Printf("Picked column %d (remaining tries %d)\n", col, max)
 
 	colors := []uint32{ColorBlue, ColorYellow, ColorRed, ColorGreen, ColorWhite}
 
