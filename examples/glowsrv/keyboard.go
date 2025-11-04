@@ -57,14 +57,14 @@ func findKeyboardDevices() []string {
 			currentName = strings.TrimPrefix(line, "N: Name=")
 			currentName = strings.Trim(currentName, "\"")
 
-			fmt.Printf("device block: %s\n", currentName)
+			// fmt.Printf("device block: %s\n", currentName)
 			currentHandlers = ""
 		} else if currentName != "" && strings.HasPrefix(line, "H: Handlers=") {
 			// Extract handlers
 			currentHandlers = strings.TrimPrefix(line, "H: Handlers=")
 		} else if line == "" && currentHandlers != "" {
 			// End of device block - check if this was a keyboard
-			fmt.Printf("check %s: handlers=%s\n", currentName, currentHandlers)
+			// fmt.Printf("check %s: handlers=%s\n", currentName, currentHandlers)
 
 			if strings.Contains(currentHandlers, "kbd") {
 				// Extract event number from handlers
@@ -102,7 +102,7 @@ func readKeyboard(device string, gsrv *GlowSrv, done chan struct{}) {
 	}
 	defer f.Close()
 
-	fmt.Printf("Keyboard input enabled on %s\n", device)
+	// fmt.Printf("Keyboard input enabled on %s\n", device)
 
 	var event inputEvent
 
