@@ -6,7 +6,6 @@ import (
 	"hash/crc32"
 	"math/rand"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strings"
 	"sync"
@@ -261,8 +260,6 @@ func (gs *GlowSrv) LEDHit() {
 	// 2. Get the node and process from the current column (before clearing)
 	if gs.topLEDCol >= 0 && gs.topLEDCol < len(gs.columns) {
 		col := &gs.columns[gs.topLEDCol]
-		node := col.Node
-		process := col.Process
 
 		// 1. Turn off the top LED
 		gs.clearTopLED()
@@ -275,19 +272,7 @@ func (gs *GlowSrv) LEDHit() {
 		}
 
 		// 3. Execute the kubectl command in a goroutine
-		go func(node, process int) {
-			fmt.Printf("Executing: /home/flynn/bin/cycle %d %d\n", node, process)
-
-			cmd := exec.Command("/home/flynn/bin/cycle", fmt.Sprintf("%d", node), fmt.Sprintf("%d", process))
-
-			output, err := cmd.CombinedOutput()
-
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "cycle failed: %v\n%s\n", err, output)
-				// } else {
-				// 	fmt.Printf("cycle output: %s\n", output)
-			}
-		}(node, process)
+		col.Cycle()
 	}
 }
 

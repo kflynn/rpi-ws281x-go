@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
 	"time"
 )
 
@@ -35,4 +38,20 @@ func (c *Column) Decay() {
 		}
 	}
 	}
+}
+
+func (c *Column) Cycle() {
+	go func() {
+		fmt.Printf("Executing: /home/flynn/bin/cycle %d %d\n", c.Node, c.Process)
+
+		cmd := exec.Command("/home/flynn/bin/cycle", fmt.Sprintf("%d", c.Node), fmt.Sprintf("%d", c.Process))
+
+		output, err := cmd.CombinedOutput()
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cycle failed: %v\n%s\n", err, output)
+			// } else {
+			// 	fmt.Printf("cycle output: %s\n", output)
+		}
+	}()
 }
