@@ -178,7 +178,8 @@ func (gs *GlowSrv) SetColumn(node int, process int, color uint32, height int) {
 	// defer gs.mutex.Unlock()
 
 	// Calculate column from node and process
-	col := (((node - 1) * 5) + process) + 1
+	// col := (((node - 1) * 5) + process) + 1
+	col := (process * 6) + node
 
 	gs.columns[col].Set(color, height)
 	gs.columns[col].Node = node
