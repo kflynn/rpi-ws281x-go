@@ -261,17 +261,17 @@ func (gs *GlowSrv) Render() {
 		gs.paintTopLED()
 
 		for col, column := range gs.columns {
-			height := column.Height / 10
+			height := (column.Height / 10) + 1
 
 			for row := 0; row < height && row < gs.rows; row++ {
 				gs.leds.SetPixel(col, gs.rows-1-row, column.Color)
 			}
 
-			if column.IsActive() {
-				gs.leds.SetPixel(col, 1, ColorGreen)
-			} else if column.IsCycling() {
-				gs.leds.SetPixel(col, 1, ColorYellow)
-			}
+			// if column.IsActive() {
+			// 	gs.leds.SetPixel(col, 1, ColorGreen)
+			// } else if column.IsCycling() {
+			// 	gs.leds.SetPixel(col, 1, ColorYellow)
+			// }
 		}
 	} else if gs.state == GSrvStateWin {
 		gs.leds.Fill(0)
