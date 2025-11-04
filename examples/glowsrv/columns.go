@@ -7,9 +7,15 @@ import (
 	"time"
 )
 
+const (
+	ColumnStateIdle    = 0
+	ColumnStateActive  = 1
+	ColumnStateCycling = 2
+)
+
 type Column struct {
-	Active     bool
 	ActiveTime time.Time
+	State      int
 	Color      uint32
 	Height     int
 	Node       int
@@ -17,19 +23,32 @@ type Column struct {
 }
 
 func (c *Column) Clear() {
-	c.Active = false
+	c.ActiveTime = time.Time{}
+	c.State = ColumnStateIdle
 	c.Color = 0
 	c.Height = 0
 }
 
 func (c *Column) Set(color uint32, height int) {
-	c.Active = true
+	if c.State == ColumnStateCycling {
+		return
+	}
+
 	c.ActiveTime = time.Now()
+	c.State = ColumnStateActive
 	c.Color = color
 	c.Height = height
 }
 
-func (c *Column) Decay() {
+func (c *Column) IsActive() bool {
+	return (c.State == ColumnStateActive)
+}
+
+func (c *Column) IsCycling() bool {
+	return (c.State == ColumnStateCycling)
+}
+
+func (c *Column) Decay(now time.Time) {
 	if c.Height > 0 {
 		c.Height -= 4
 
@@ -37,10 +56,15 @@ func (c *Column) Decay() {
 			c.Height = 0
 		}
 	}
+
+	if c.Height == 0 && now.Sub(c.ActiveTime) > 2*time.Second {
+		c.State = ColumnStateIdle
 	}
 }
 
 func (c *Column) Cycle() {
+	c.State = ColumnStateCycling
+
 	go func() {
 		fmt.Printf("Executing: /home/flynn/bin/cycle %d %d\n", c.Node, c.Process)
 

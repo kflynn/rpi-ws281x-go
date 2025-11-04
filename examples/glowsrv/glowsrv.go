@@ -187,6 +187,7 @@ func (gs *GlowSrv) SetColumn(node int, process int, color uint32, height int) {
 
 func (gs *GlowSrv) Render() error {
 	// In Normal state, we'll need to re-render the whole display.
+
 	if gs.state == GSrvStateNormal {
 		gs.leds.Fill(0)
 		gs.paintTopLED()
@@ -197,6 +198,12 @@ func (gs *GlowSrv) Render() error {
 			for row := 0; row < height && row < gs.rows; row++ {
 				gs.leds.SetPixel(col, gs.rows-1-row, column.Color)
 			}
+
+			if column.IsActive() {
+				gs.leds.SetPixel(col, 1, ColorGreen)
+			} else if column.IsCycling() {
+				gs.leds.SetPixel(col, 1, ColorYellow)
+			}
 		}
 	}
 
@@ -204,8 +211,10 @@ func (gs *GlowSrv) Render() error {
 }
 
 func (gs *GlowSrv) Decay() {
+	now := time.Now()
+
 	for col := range gs.columns {
-		gs.columns[col].Decay()
+		gs.columns[col].Decay(now)
 	}
 }
 
@@ -282,8 +291,9 @@ func (gs *GlowSrv) UpdateTopLED() {
 
 	// Find all active columns
 	activeColumns := []int{}
+
 	for col, column := range gs.columns {
-		if column.Active && column.Height > 0 {
+		if column.IsActive() {
 			activeColumns = append(activeColumns, col)
 		}
 	}
