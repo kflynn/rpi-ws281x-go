@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -49,6 +50,11 @@ func (eq *EventQueue) Send(event Event) {
 	select {
 	case eq.events <- event:
 	default:
+		// Dump goroutine stacks to /tmp/dump for debugging
+		buf := make([]byte, 1<<20)
+		n := runtime.Stack(buf, true)
+		_ = os.WriteFile("/tmp/dump", buf[:n], 0644)
+
 		fmt.Printf("EventQueue: send failed, channel full\n")
 		os.Exit(1)
 	}

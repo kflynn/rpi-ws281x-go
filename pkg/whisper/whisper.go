@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
+	"os"
+	"runtime"
 	"strconv"
 	"sync"
 )
@@ -288,6 +290,11 @@ func (w *Whisper) recvLoop() {
 			case w.RecvChan <- srs:
 				// Delivered successfully.
 			default:
+				// Dump goroutine stacks to /tmp/dump for debugging
+				buf := make([]byte, 1<<20)
+				n := runtime.Stack(buf, true)
+				_ = os.WriteFile("/tmp/dump", buf[:n], 0644)
+
 				fmt.Printf("RecvChan buffer full, dropping message: dest=0x%08X source=0x%08X Cmd=0x%04X Nonce=%d Len=%d\n", srs.Dest, srs.Source, srs.Cmd, srs.Nonce, len(srs.Data))
 			}
 		}
