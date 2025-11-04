@@ -8,13 +8,74 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
 	"github.com/rpi-ws281x/rpi-ws281x-go/pkg/glowy"
 	"github.com/rpi-ws281x/rpi-ws281x-go/pkg/whisper"
 )
+
+type Event struct {
+	Cmd      int
+	Data     []byte
+	Key      string
+	NewState int
+	NewDelay int
+	Column   *Column
+}
+
+const (
+	EventCmdActivity   = 1 // Process reporting activity
+	EventCmdRender     = 2 // Time to render!
+	EventCmdNewTopLED  = 3 // Time to pick a new top LED!
+	EventCmdKeyPress   = 4 // Keypress arrived
+	EventCmdUpdate     = 5 // Time to update the world!
+	EventCmdNewState   = 6 // Change state
+	EventCmdReactivate = 7 // Reactivate a column
+)
+
+type EventQueue struct {
+	events chan Event
+}
+
+func NewEventQueue(size int) *EventQueue {
+	return &EventQueue{
+		events: make(chan Event, size),
+	}
+}
+
+func (eq *EventQueue) Send(event Event) {
+	// fmt.Printf("EventQueue: sending event cmd=%d\n", event.Cmd)
+	select {
+	case eq.events <- event:
+	default:
+		fmt.Printf("EventQueue: send failed, channel full\n")
+		os.Exit(1)
+	}
+}
+
+func (eq *EventQueue) Run(gs *GlowSrv) {
+	for event := range eq.events {
+		switch event.Cmd {
+		case EventCmdActivity:
+			gs.handleActivityCommand(event.Data)
+		case EventCmdKeyPress:
+			gs.handleButtonPress(event.Key)
+		case EventCmdNewTopLED:
+			gs.UpdateTopLED()
+		case EventCmdRender:
+			gs.Render()
+		case EventCmdUpdate:
+			gs.Update()
+		case EventCmdNewState:
+			gs.SwitchState(event.NewState, event.NewDelay)
+		case EventCmdReactivate:
+			if event.Column != nil {
+				event.Column.SetActive()
+			}
+		}
+	}
+}
 
 const (
 	GSrvStateIdle   = 0
@@ -42,6 +103,8 @@ const (
 )
 
 type GlowSrv struct {
+	eventQueue *EventQueue
+
 	state int
 	delay int
 
@@ -52,7 +115,6 @@ type GlowSrv struct {
 
 	leds *LEDs
 
-	mutex   sync.RWMutex
 	columns []Column
 
 	snake Snake
@@ -62,8 +124,9 @@ type GlowSrv struct {
 	topLEDUpdateCh chan struct{}
 }
 
-func NewGlowSrv(rows, cols int, leds *LEDs) (*GlowSrv, error) {
+func NewGlowSrv(eventQueue *EventQueue, rows, cols int, leds *LEDs) (*GlowSrv, error) {
 	gs := &GlowSrv{
+		eventQueue:     eventQueue,
 		state:          GSrvStateSnake,
 		delay:          0,
 		lastActivity:   time.Now(),
@@ -90,9 +153,14 @@ func (gs *GlowSrv) ClearAll() {
 }
 
 func (gs *GlowSrv) UseState(state int) {
-	// gs.mutex.Lock()
-	// defer gs.mutex.Unlock()
+	gs.eventQueue.Send(Event{Cmd: EventCmdNewState, NewState: state, NewDelay: 0})
+}
 
+func (gs *GlowSrv) UseStateWithDelay(state int, delay int) {
+	gs.eventQueue.Send(Event{Cmd: EventCmdNewState, NewState: state, NewDelay: delay})
+}
+
+func (gs *GlowSrv) SwitchState(state int, delay int) {
 	if gs.state != state {
 		// fmt.Printf("GlowSrv: changing state from %d to %d\n", gs.state, state)
 
@@ -121,15 +189,9 @@ func (gs *GlowSrv) UseState(state int) {
 			gs.initSnake()
 		}
 
-		// Entering Win state: clear all and paint WIN, set 10-second delay
-		if state == GSrvStateWin {
-			gs.leds.Fill(0)
-			gs.paintWin()
-			gs.delay = 10 * GSrvUpdatesPerSecond
-		}
+		gs.delay = delay
+		gs.state = state
 	}
-
-	gs.state = state
 }
 
 func (gs *GlowSrv) initSnake() {
@@ -137,6 +199,7 @@ func (gs *GlowSrv) initSnake() {
 }
 
 func (gs *GlowSrv) UpdateSnake() {
+	// fmt.Printf("Updating snake...\n")
 	collision := gs.snake.Update()
 
 	for _, cell := range gs.snake.Body {
@@ -168,8 +231,7 @@ func (gs *GlowSrv) UpdateSnake() {
 
 	if collision {
 		// fmt.Printf("Snake collision! Going to idle\n")
-		gs.delay = 20 // Number of update cycles to stay in idle
-		gs.UseState(GSrvStateIdle)
+		gs.UseStateWithDelay(GSrvStateIdle, 20)
 	}
 }
 
@@ -186,9 +248,8 @@ func (gs *GlowSrv) SetColumn(node int, process int, color uint32, height int) {
 	gs.columns[col].Process = process
 }
 
-func (gs *GlowSrv) Render() error {
+func (gs *GlowSrv) Render() {
 	// In Normal state, we'll need to re-render the whole display.
-
 	if gs.state == GSrvStateNormal {
 		gs.leds.Fill(0)
 		gs.paintTopLED()
@@ -206,9 +267,18 @@ func (gs *GlowSrv) Render() error {
 				gs.leds.SetPixel(col, 1, ColorYellow)
 			}
 		}
+	} else if gs.state == GSrvStateWin {
+		gs.leds.Fill(0)
+		gs.paintWin()
 	}
 
-	return gs.leds.Render()
+	// Finally, actually paint the LEDs.
+	err := gs.leds.Render()
+
+	if err != nil {
+		fmt.Printf("GlowSrv: Render failed: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func (gs *GlowSrv) Decay() {
@@ -283,29 +353,32 @@ func (gs *GlowSrv) paintWin() {
 }
 
 func (gs *GlowSrv) LEDHit() {
-	// 2. Get the node and process from the current column (before clearing)
 	if gs.topLEDCol >= 0 && gs.topLEDCol < len(gs.columns) {
 		col := &gs.columns[gs.topLEDCol]
 
-		// 1. Turn off the top LED
-		gs.clearTopLED()
-
-		// 2. Immediately pick a new top LED and reset the timer
+		// Pick a new top LED (which clears the current one)
 		gs.UpdateTopLED()
+
+		// Reset the top LED update timer
 		select {
 		case gs.topLEDUpdateCh <- struct{}{}:
 		default:
 		}
 
-		// 3. Repaint this row in red
+		// Repaint this row in red
 		gs.SetColumn(col.Node, col.Process, ColorRed, 60)
 
-		// 4. Cycle this process
-		col.Cycle()
+		// Cycle this process
+		col.Cycle(gs)
 	}
 }
 
 func (gs *GlowSrv) UpdateTopLED() {
+	// Only update the top LED in Normal state
+	if gs.state != GSrvStateNormal {
+		return
+	}
+
 	// Clear previous top LED if set
 	gs.clearTopLED()
 
@@ -320,9 +393,10 @@ func (gs *GlowSrv) UpdateTopLED() {
 
 	// If no active columns, go to Win state
 	if len(activeColumns) == 0 {
+		fmt.Printf("No active columns, entering Win state\n")
 		gs.topLEDCol = -1
 		gs.topLEDColor = 0
-		gs.UseState(GSrvStateWin)
+		gs.UseStateWithDelay(GSrvStateWin, 10*GSrvUpdatesPerSecond)
 		return
 	}
 
@@ -357,15 +431,10 @@ func (gs *GlowSrv) UpdateTopLED() {
 
 	gs.topLEDCol = col
 	gs.topLEDColor = color
-	gs.paintTopLED()
 }
 
-func (gs *GlowSrv) Update() error {
-	gs.mutex.Lock()
-	defer gs.mutex.Unlock()
-
-	err := gs.Render()
-
+func (gs *GlowSrv) Update() {
+	// fmt.Printf("GlowSrv: Update state=%d delay=%d\n", gs.state, gs.delay)
 	switch gs.state {
 	case GSrvStateIdle:
 		gs.delay--
@@ -392,7 +461,7 @@ func (gs *GlowSrv) Update() error {
 		}
 	}
 
-	return err
+	gs.eventQueue.Send(Event{Cmd: EventCmdRender})
 }
 
 func (gs *GlowSrv) handleActivityCommand(data []byte) {
@@ -436,28 +505,19 @@ func (gs *GlowSrv) handleActivityCommand(data []byte) {
 
 	// fmt.Printf("n%dp%d %v/%d -> %d\n", msg.Node, msg.Process, msg.OK, msg.Value, height)
 
-	gs.mutex.Lock()
-	defer gs.mutex.Unlock()
-
 	// Don't process activity during Win state
 	if gs.state != GSrvStateWin {
-		gs.UseState(GSrvStateNormal)
 		gs.SetColumn(msg.Node, msg.Process, color, height)
+		gs.UseState(GSrvStateNormal)
 	}
 }
 
 func (gs *GlowSrv) handleIdleCommand(data []byte) {
 	// Switch to Snake state.
-	gs.mutex.Lock()
-	defer gs.mutex.Unlock()
-
 	gs.UseState(GSrvStateSnake)
 }
 
 func (gs *GlowSrv) handleButtonPress(key string) {
-	gs.mutex.Lock()
-	defer gs.mutex.Unlock()
-
 	// Ignore button presses during Win state
 	if gs.state == GSrvStateWin {
 		return
@@ -497,6 +557,9 @@ func (gs *GlowSrv) handleButtonPress(key string) {
 }
 
 func main() {
+	// Our event queue
+	eventQueue := NewEventQueue(100)
+
 	// Handle SIGINT/SIGTERM for graceful shutdown
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -557,7 +620,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	gsrv, err := NewGlowSrv(GSrvRows, GSrvCols, leds)
+	gsrv, err := NewGlowSrv(eventQueue, GSrvRows, GSrvCols, leds)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create GlowSrv: %v\n", err)
@@ -572,11 +635,7 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				err := gsrv.Update()
-
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Failed to update GlowSrv: %v\n", err)
-				}
+				eventQueue.Send(Event{Cmd: EventCmdUpdate})
 
 			case <-done:
 				return
@@ -594,11 +653,7 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				gsrv.mutex.Lock()
-				if gsrv.state == GSrvStateNormal {
-					gsrv.UpdateTopLED()
-				}
-				gsrv.mutex.Unlock()
+				eventQueue.Send(Event{Cmd: EventCmdNewTopLED})
 
 			case <-gsrv.topLEDUpdateCh:
 				// Reset the timer when a hit occurs
@@ -623,20 +678,21 @@ func main() {
 	}
 
 	for _, device := range kbdDevices {
-		go readKeyboard(device, gsrv, done)
+		go readKeyboard(device, eventQueue, done)
 	}
 
+	// Start event queue processor
+	go eventQueue.Run(gsrv)
+
+	// Main loop: process Whisper messages
 	fmt.Println("glowsrv: waiting for susurri...")
 	for {
 		select {
 		case srs := <-w.RecvChan:
-			// fmt.Printf("Received susurrus: dest=0x%08X source=0x%08X, Cmd=0x%04X, Nonce=%d, Length=%d, Data=%X\n", srs.Dest, srs.Source, srs.Cmd, srs.Nonce, srs.Length, srs.Data)
-
 			if srs.Cmd == glowy.CmdActivity {
-				gsrv.handleActivityCommand(srs.Data)
+				eventQueue.Send(Event{Cmd: EventCmdActivity, Data: srs.Data})
 			} else if srs.Cmd == glowy.CmdIdle {
-				// Handle idle command
-				gsrv.handleIdleCommand(srs.Data)
+				eventQueue.Send(Event{Cmd: EventCmdNewState, NewState: GSrvStateSnake})
 			} else {
 				fmt.Printf("Unknown command 0x%04X\n", srs.Cmd)
 			}

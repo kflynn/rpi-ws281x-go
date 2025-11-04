@@ -40,6 +40,11 @@ func (c *Column) Set(color uint32, height int) {
 	c.Height = height
 }
 
+func (c *Column) SetActive() {
+	fmt.Printf("Reactivating column %d %d\n", c.Node, c.Process)
+	c.State = ColumnStateActive
+}
+
 func (c *Column) IsActive() bool {
 	return (c.State == ColumnStateActive)
 }
@@ -62,20 +67,38 @@ func (c *Column) Decay(now time.Time) {
 	}
 }
 
-func (c *Column) Cycle() {
+func (c *Column) Cycle(gs *GlowSrv) {
+	// Don't spawn multiple cycles for the same column
+	if c.State == ColumnStateCycling {
+		return
+	}
+
 	c.State = ColumnStateCycling
 
 	go func() {
 		fmt.Printf("Executing: /home/flynn/bin/cycle %d %d\n", c.Node, c.Process)
 
-		cmd := exec.Command("/home/flynn/bin/cycle", fmt.Sprintf("%d", c.Node), fmt.Sprintf("%d", c.Process))
+		// Open log file for appending
+		logFile, err := os.OpenFile("/home/flynn/cycle.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to open cycle.log: %v\n", err)
+			return
+		}
+		defer logFile.Close()
 
-		output, err := cmd.CombinedOutput()
+		// Run cycle command in background with output redirected
+		cmd := exec.Command("/home/flynn/bin/cycle", fmt.Sprintf("%d", c.Node), fmt.Sprintf("%d", c.Process))
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+
+		err = cmd.Start()
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "cycle failed: %v\n%s\n", err, output)
-			// } else {
-			// 	fmt.Printf("cycle output: %s\n", output)
+			fmt.Fprintf(os.Stderr, "cycle launch failed: %v\n", err)
 		}
+
+		// Wait 2 seconds then set state back to Active
+		time.Sleep(2 * time.Second)
+		gs.eventQueue.Send(Event{Cmd: EventCmdReactivate, Column: c})
 	}()
 }

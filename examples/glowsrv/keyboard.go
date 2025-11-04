@@ -93,7 +93,7 @@ func findKeyboardDevices() []string {
 	return kbdDevices
 }
 
-func readKeyboard(device string, gsrv *GlowSrv, done chan struct{}) {
+func readKeyboard(device string, eventQueue *EventQueue, done chan struct{}) {
 	f, err := os.Open(device)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to open keyboard device %s: %v\n", device, err)
@@ -145,7 +145,8 @@ func readKeyboard(device string, gsrv *GlowSrv, done chan struct{}) {
 				default:
 					continue
 				}
-				gsrv.handleButtonPress(key)
+
+				eventQueue.Send(Event{Cmd: EventCmdKeyPress, Key: key})
 			}
 		}
 	}
