@@ -193,7 +193,7 @@ func (gs *GlowSrv) Render() error {
 		gs.paintTopLED()
 
 		for col, column := range gs.columns {
-			height := column.Height
+			height := column.Height / 10
 
 			for row := 0; row < height && row < gs.rows; row++ {
 				gs.leds.SetPixel(col, gs.rows-1-row, column.Color)
@@ -404,10 +404,22 @@ func (gs *GlowSrv) handleActivityCommand(data []byte) {
 		return
 	}
 
-	height := msg.Value / 10
-	capped_height := max(min(height, gs.rows-2), 1)
+	height := 60
 
-	// fmt.Printf("n%dp%d %v/%d -> %d\n", msg.Node, msg.Process, msg.OK, msg.Value, capped_height)
+	// Calculate height based on non-linear mapping
+	if msg.Value < 10 {
+		height = 10
+	} else if msg.Value < 50 {
+		height = 20
+	} else if msg.Value < 100 {
+		height = 30
+	} else if msg.Value < 150 {
+		height = 40
+	} else if msg.Value < 200 {
+		height = 50
+	}
+
+	// fmt.Printf("n%dp%d %v/%d -> %d\n", msg.Node, msg.Process, msg.OK, msg.Value, height)
 
 	gs.mutex.Lock()
 	defer gs.mutex.Unlock()
@@ -415,7 +427,7 @@ func (gs *GlowSrv) handleActivityCommand(data []byte) {
 	// Don't process activity during Win state
 	if gs.state != GSrvStateWin {
 		gs.UseState(GSrvStateNormal)
-		gs.SetColumn(msg.Node, msg.Process, color, capped_height)
+		gs.SetColumn(msg.Node, msg.Process, color, height)
 	}
 }
 

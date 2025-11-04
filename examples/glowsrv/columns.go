@@ -28,6 +28,11 @@ func (c *Column) Set(color uint32, height int) {
 
 func (c *Column) Decay() {
 	if c.Height > 0 {
-		c.Height--
+		c.Height -= 4
+
+		if c.Height < 0 {
+			c.Height = 0
+		}
+	}
 	}
 }
