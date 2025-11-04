@@ -273,14 +273,17 @@ func (gs *GlowSrv) LEDHit() {
 		// 1. Turn off the top LED
 		gs.clearTopLED()
 
-		// Immediately pick a new top LED and reset the timer
+		// 2. Immediately pick a new top LED and reset the timer
 		gs.UpdateTopLED()
 		select {
 		case gs.topLEDUpdateCh <- struct{}{}:
 		default:
 		}
 
-		// 3. Execute the kubectl command in a goroutine
+		// 3. Repaint this row in red
+		gs.SetColumn(col.Node, col.Process, ColorRed, 60)
+
+		// 4. Cycle this process
 		col.Cycle()
 	}
 }
