@@ -220,13 +220,29 @@ func (gs *GlowSrv) Decay() {
 
 func (gs *GlowSrv) clearTopLED() {
 	if gs.topLEDCol >= 0 {
+		if gs.topLEDCol > 0 {
+			gs.leds.SetPixel(gs.topLEDCol-1, 0, 0)
+		}
+
 		gs.leds.SetPixel(gs.topLEDCol, 0, 0)
+
+		if gs.topLEDCol < gs.cols-2 {
+			gs.leds.SetPixel(gs.topLEDCol+1, 0, 0)
+		}
 	}
 }
 
 func (gs *GlowSrv) paintTopLED() {
 	if gs.topLEDCol >= 0 {
+		if gs.topLEDCol > 0 {
+			gs.leds.SetPixel(gs.topLEDCol-1, 0, gs.topLEDColor)
+		}
+
 		gs.leds.SetPixel(gs.topLEDCol, 0, gs.topLEDColor)
+
+		if gs.topLEDCol < gs.cols-2 {
+			gs.leds.SetPixel(gs.topLEDCol+1, 0, gs.topLEDColor)
+		}
 	}
 }
 
