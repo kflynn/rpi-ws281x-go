@@ -68,7 +68,7 @@ func (eq *EventQueue) Run(gs *GlowSrv) {
 		case EventCmdKeyPress:
 			gs.handleButtonPress(event.Key)
 		case EventCmdNewTopLED:
-			gs.UpdateTopLED()
+			gs.UpdateTopLED(false)
 		case EventCmdRender:
 			gs.Render()
 		case EventCmdUpdate:
@@ -362,14 +362,8 @@ func (gs *GlowSrv) LEDHit() {
 	if gs.topLEDCol >= 0 && gs.topLEDCol < len(gs.columns) {
 		col := &gs.columns[gs.topLEDCol]
 
-		// Pick a new top LED (which clears the current one)
-		gs.UpdateTopLED()
-
-		// Reset the top LED update timer
-		select {
-		case gs.topLEDUpdateCh <- struct{}{}:
-		default:
-		}
+		// Force a new top LED and reset the timer
+		gs.UpdateTopLED(true)
 
 		// Repaint this row in red
 		gs.SetColumn(col.Node, col.Process, ColorRed, 60)
@@ -379,7 +373,7 @@ func (gs *GlowSrv) LEDHit() {
 	}
 }
 
-func (gs *GlowSrv) UpdateTopLED() {
+func (gs *GlowSrv) UpdateTopLED(resetTimer bool) {
 	// Only update the top LED in Normal state
 	if gs.state != GSrvStateNormal {
 		return
@@ -460,6 +454,14 @@ func (gs *GlowSrv) UpdateTopLED() {
 
 	gs.topLEDCol = col
 	gs.topLEDColor = color
+
+	if resetTimer {
+		// Reset the top LED update timer
+		select {
+		case gs.topLEDUpdateCh <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (gs *GlowSrv) Update() {
@@ -554,34 +556,39 @@ func (gs *GlowSrv) handleButtonPress(key string) {
 
 	// fmt.Printf("handleButtonPress: key=%s topLEDCol=%d topLEDColor=0x%06X\n", key, gs.topLEDCol, gs.topLEDColor)
 
-	// SPACE always generates a hit (for testing)
-	if key == "SPACE" {
-		if gs.topLEDCol >= 0 {
-			fmt.Printf("✓ SPACE hit (testing)!\n")
-			gs.LEDHit()
-		}
+	if gs.topLEDCol < 0 {
+		// No top LED yet, bail.
 		return
 	}
 
-	// Check if key matches the top LED color
-	var keyMatches bool
+	keyMatches := false
 
-	switch gs.topLEDColor {
-	case ColorBlue:
-		keyMatches = (key == "B")
-	case ColorYellow:
-		keyMatches = (key == "Y")
-	case ColorRed:
-		keyMatches = (key == "R")
-	case ColorGreen:
-		keyMatches = (key == "G")
-	case ColorWhite:
-		keyMatches = (key == "W")
+	// SPACE always generates a hit (for testing)
+	if key == "SPACE" {
+		fmt.Printf("✓ SPACE hit (testing)!\n")
+		keyMatches = true
+	} else {
+		switch gs.topLEDColor {
+		case ColorBlue:
+			keyMatches = (key == "B")
+		case ColorYellow:
+			keyMatches = (key == "Y")
+		case ColorRed:
+			keyMatches = (key == "R")
+		case ColorGreen:
+			keyMatches = (key == "G")
+		case ColorWhite:
+			keyMatches = (key == "W")
+		}
 	}
 
-	if keyMatches && gs.topLEDCol >= 0 {
+	if keyMatches {
 		fmt.Printf("✓ hit!\n")
 		gs.LEDHit()
+	} else {
+		// They hit a key, but it was the wrong one. Force a new topLED.
+		fmt.Printf("✗ miss (key=%s, topLEDColor=0x%06X)\n", key, gs.topLEDColor)
+		gs.UpdateTopLED(true)
 	}
 }
 
