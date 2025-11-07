@@ -29,6 +29,18 @@ func (c *Column) Clear() {
 	c.Height = 0
 }
 
+func (c *Column) Name() string {
+	colState := "I"
+
+	if c.IsActive() {
+		colState = "A"
+	} else if c.IsCycling() {
+		colState = "C"
+	}
+
+	return fmt.Sprintf("%d,%d [%s]", c.Node, c.Process, colState)
+}
+
 func (c *Column) Set(color uint32, height int) {
 	if c.State == ColumnStateCycling {
 		return
@@ -38,10 +50,14 @@ func (c *Column) Set(color uint32, height int) {
 	c.State = ColumnStateActive
 	c.Color = color
 	c.Height = height
+
+	// if c.IsInteresting() {
+	// 	fmt.Printf("S %s -> %06x height %d\n", c.Name(), color, height)
+	// }
 }
 
 func (c *Column) SetActive() {
-	fmt.Printf("Reactivating column %d %d\n", c.Node, c.Process)
+	// fmt.Printf("Reactivating column %d %d\n", c.Node, c.Process)
 	c.State = ColumnStateActive
 }
 
@@ -51,6 +67,10 @@ func (c *Column) IsActive() bool {
 
 func (c *Column) IsCycling() bool {
 	return (c.State == ColumnStateCycling)
+}
+
+func (c *Column) IsInteresting() bool {
+	return (c.Node == 1) && (c.Process == 0)
 }
 
 func (c *Column) Decay(now time.Time) {
@@ -65,6 +85,10 @@ func (c *Column) Decay(now time.Time) {
 	if c.Height == 0 && now.Sub(c.ActiveTime) > 2*time.Second {
 		c.State = ColumnStateIdle
 	}
+
+	// if (c.Height > 0) && c.IsInteresting() {
+	// 	fmt.Printf("D %s -> %06x height %d\n", c.Name(), c.Color, c.Height)
+	// }
 }
 
 func (c *Column) Cycle(gs *GlowSrv) {

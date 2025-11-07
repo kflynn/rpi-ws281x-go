@@ -177,9 +177,9 @@ func (gs *GlowSrv) SetColumn(node int, process int, color uint32, height int) {
 	// col := (((node - 1) * 5) + process) + 1
 	col := (process * 6) + node
 
-	gs.columns[col].Set(color, height)
 	gs.columns[col].Node = node
 	gs.columns[col].Process = process
+	gs.columns[col].Set(color, height)
 }
 
 func (gs *GlowSrv) Render() {
@@ -191,8 +191,19 @@ func (gs *GlowSrv) Render() {
 		for col, column := range gs.columns {
 			height := (column.Height / 10) + 1
 
+			// shouldLog := (column.IsActive() && column.IsInteresting() && (height > 0)) || column.IsCycling()
+			// shouldLog := column.IsCycling()
+
+			// if shouldLog {
+			// 	fmt.Printf("R %s: c.H %d -> height %d\n", column.Name(), column.Height, height)
+			// }
+
 			for row := 0; row < height && row < gs.rows; row++ {
 				gs.leds.SetPixel(col, gs.rows-1-row, column.Color)
+
+				// if shouldLog {
+				// 	fmt.Printf("      %d/%d = 0x%06x\n", row, height, color)
+				// }
 			}
 
 			// if column.IsActive() {
@@ -462,7 +473,7 @@ func (gs *GlowSrv) handleActivityCommand(data []byte) {
 		height = 50
 	}
 
-	// fmt.Printf("n%dp%d %v/%d -> %d\n", msg.Node, msg.Process, msg.OK, msg.Value, height)
+	// fmt.Printf("W %d,%d %v/%d -> %d\n", msg.Node, msg.Process, msg.OK, msg.Value, height)
 
 	// Don't process activity during Win state
 	if gs.state != GSrvStateWin {
