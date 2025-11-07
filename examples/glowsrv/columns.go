@@ -75,7 +75,11 @@ func (c *Column) IsInteresting() bool {
 
 func (c *Column) Decay(now time.Time) {
 	if c.Height > 0 {
-		c.Height -= 4
+		if c.IsCycling() {
+			c.Height -= 10
+		} else {
+			c.Height -= 2
+		}
 
 		if c.Height < 0 {
 			c.Height = 0

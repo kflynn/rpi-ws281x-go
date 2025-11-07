@@ -17,7 +17,7 @@ const (
 	GSrvStateNormal = 2
 	GSrvStateWin    = 3
 
-	GSrvUpdatesPerSecond = 10
+	GSrvUpdatesPerSecond = 20
 	GSrvSecondsForTopLED = 2
 )
 
@@ -189,7 +189,11 @@ func (gs *GlowSrv) Render() {
 		gs.paintTopLED()
 
 		for col, column := range gs.columns {
-			height := (column.Height / 10) + 1
+			height := min(column.Height/10, gs.rows-1)
+
+			if column.IsActive() || column.IsCycling() {
+				height += 1
+			}
 
 			// shouldLog := (column.IsActive() && column.IsInteresting() && (height > 0)) || column.IsCycling()
 			// shouldLog := column.IsCycling()
@@ -199,11 +203,19 @@ func (gs *GlowSrv) Render() {
 			// }
 
 			for row := 0; row < height && row < gs.rows; row++ {
-				gs.leds.SetPixel(col, gs.rows-1-row, column.Color)
+				color := column.Color
+
+				if column.IsCycling() {
+					if row != (height - 1) {
+						color = 0
+					}
+				}
 
 				// if shouldLog {
 				// 	fmt.Printf("      %d/%d = 0x%06x\n", row, height, color)
 				// }
+
+				gs.leds.SetPixel(col, gs.rows-1-row, color)
 			}
 
 			// if column.IsActive() {
@@ -305,7 +317,7 @@ func (gs *GlowSrv) LEDHit() {
 		gs.UpdateTopLED(true)
 
 		// Repaint this row in red
-		gs.SetColumn(col.Node, col.Process, ColorRed, 60)
+		gs.SetColumn(col.Node, col.Process, ColorRed, 70)
 
 		// Cycle this process
 		col.Cycle(gs)
